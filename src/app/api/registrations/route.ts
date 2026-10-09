@@ -1,4 +1,5 @@
 import { createSupabaseAdmin } from "@/lib/supabase-admin";
+import { createTeamSessionCookie } from "@/lib/team-session";
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -92,7 +93,16 @@ export async function POST(request: Request) {
       .single();
 
     if (insertError) throw insertError;
-    return Response.json({ registrationId: registration.id }, { status: 201 });
+    return Response.json(
+      { registrationId: registration.id },
+      {
+        status: 201,
+        headers: {
+          "Set-Cookie": createTeamSessionCookie(registration.id, process.env.SUPABASE_SERVICE_ROLE_KEY ?? ""),
+          "Cache-Control": "no-store",
+        },
+      },
+    );
   } catch (error) {
     console.error("Could not save registration:", error);
     return Response.json({ error: "Could not save your registration." }, { status: 503 });

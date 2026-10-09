@@ -1,19 +1,42 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays, Check, Clock3, MapPin, Plus, UsersRound, X } from "lucide-react";
 import type { ClubEvent } from "@/lib/events";
 
 type TeamMember = { name: string; email: string; phone: string; usn: string };
+type RegistrationState = { id: string; leaderEmail: string; submitted: boolean };
 
 export default function EventDetail({ event }: { event: ClubEvent }) {
   const [memberCount, setMemberCount] = useState(1);
-  const [registration, setRegistration] = useState<{ id: string; leaderEmail: string } | null>(null);
+  const [registration, setRegistration] = useState<RegistrationState | null>(null);
+  const [checkingRegistration, setCheckingRegistration] = useState(true);
   const [registering, setRegistering] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/teams/me", { cache: "no-store" })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not check team registration.");
+        return response.json();
+      })
+      .then(({ team }) => {
+        if (active && team?.eventId === event.id) {
+          setRegistration({
+            id: team.id,
+            leaderEmail: team.leaderEmail,
+            submitted: Boolean(team.submission),
+          });
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => { if (active) setCheckingRegistration(false); });
+    return () => { active = false; };
+  }, [event.id]);
 
   async function handleRegistration(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -49,7 +72,7 @@ export default function EventDetail({ event }: { event: ClubEvent }) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Registration failed.");
-      setRegistration({ id: result.registrationId, leaderEmail: members[0].email });
+      setRegistration({ id: result.registrationId, leaderEmail: members[0].email, submitted: false });
       setSuccess("Your team is registered. You can submit your project here when submissions open.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save your registration.");
@@ -83,6 +106,7 @@ export default function EventDetail({ event }: { event: ClubEvent }) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error ?? "Submission failed.");
+      setRegistration((current) => current ? { ...current, submitted: true } : current);
       setSuccess("Your project submission has been received.");
       formElement.reset();
     } catch (cause) {
@@ -101,12 +125,16 @@ export default function EventDetail({ event }: { event: ClubEvent }) {
       </section>
       <section className="detail-body">
         <div className="detail-info"><span className="section-overline">THE PLAN</span><h2>Good ideas<br />start <span>somewhere.</span></h2><p className="detail-description">{event.description}</p><div className="detail-facts"><div><CalendarDays size={17} /><span><strong>{event.dateLabel}</strong><small>Save the date</small></span></div><div><Clock3 size={17} /><span><strong>{event.time}</strong><small>Doors open 15 minutes early</small></span></div><div><MapPin size={17} /><span><strong>{event.venue}</strong><small>On campus</small></span></div><div><UsersRound size={17} /><span><strong>Teams up to {event.maxTeamSize}</strong><small>Bring a crew or find one here</small></span></div></div><div className="detail-note"><span>✳</span><p>New to this? Perfect. All experience levels are welcome, and nobody expects you to have it all figured out.</p></div></div>
-        {registration ? (
+        {checkingRegistration ? (
+          <div className="registration-form"><div className="portal-loading">Checking your team registration…</div></div>
+        ) : registration ? (
           <section className="registration-form">
-            <div className="form-heading"><div><span className="section-overline">TEAM REGISTRATION</span><h2>You’re <span>on the list.</span></h2></div><span className="confirmation-icon"><Check size={18} /></span></div>
-            <p className="form-success">{success}</p>
+            <div className="form-heading"><div><span className="section-overline">TEAM REGISTRATION</span><h2>{registration.submitted ? <>Submission <span>received.</span></> : <>You’re <span>on the list.</span></>}</h2></div><span className="confirmation-icon"><Check size={18} /></span></div>
+            {success && <p className="form-success">{success}</p>}
             <p className="form-fine-print">Registration ID: {registration.id}</p>
-            {event.submissionsOpen ? (
+            {registration.submitted ? (
+              <div className="form-success">Your team’s project has been submitted.</div>
+            ) : event.submissionsOpen ? (
               <form onSubmit={handleSubmission} className="submission-form">
                 <div className="member-form-heading"><span>PROJECT SUBMISSION</span><span>{event.submissionDeadline ? `DUE ${new Date(event.submissionDeadline).toLocaleDateString()}` : "OPEN"}</span></div>
                 <label className="field-label">GitHub repository<input name="githubUrl" type="url" placeholder="https://github.com/team/project" required /></label>

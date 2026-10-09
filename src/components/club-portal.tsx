@@ -11,7 +11,6 @@ import {
   CircleHelp,
   FileSpreadsheet,
   Filter,
-  LayoutDashboard,
   LogOut,
   MapPin,
   Search,
@@ -25,11 +24,20 @@ import type { AdminEvent, ClubEvent, TeamRegistration } from "@/lib/events";
 
 type PortalView = "events" | "teams" | "admin";
 type ApiResult<T> = T & { error?: string };
+type TeamDashboard = {
+  id: string;
+  eventId: string;
+  teamName: string;
+  leaderEmail: string;
+  members: { name: string; email: string | null; phone: string | null; usn: string | null }[];
+  createdAt: string;
+  event: { id: string; title: string; category: string; starts_at: string | null; venue: string | null } | null;
+  submission: { id: string } | null;
+};
 
 const navItems = [
   { href: "/events", label: "Events", icon: CalendarDays, view: "events" },
   { href: "/teams", label: "Team hub", icon: UsersRound, view: "teams" },
-  { href: "/admin", label: "Admin", icon: LayoutDashboard, view: "admin" },
 ] as const;
 const categories = ["All events", "Hackathon", "Workshop", "Meetup", "Community"];
 
@@ -43,6 +51,9 @@ export default function ClubPortal({ view }: { view: PortalView }) {
   const [events, setEvents] = useState<ClubEvent[]>([]);
   const [adminEvents, setAdminEvents] = useState<AdminEvent[]>([]);
   const [registrations, setRegistrations] = useState<TeamRegistration[]>([]);
+  const [teamDashboard, setTeamDashboard] = useState<TeamDashboard | null>(null);
+  const [teamSessionLoading, setTeamSessionLoading] = useState(view === "teams");
+  const [teamSessionError, setTeamSessionError] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All events");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -66,6 +77,17 @@ export default function ClubPortal({ view }: { view: PortalView }) {
       .then((result) => { if (active) setAdminAuthenticated(result.authenticated); })
       .catch((error: unknown) => { if (active) setAdminPasswordError(error instanceof Error ? error.message : "Could not check admin session."); })
       .finally(() => { if (active) setSessionChecked(true); });
+    return () => { active = false; };
+  }, [view]);
+
+  useEffect(() => {
+    if (view !== "teams") return;
+    let active = true;
+    fetch("/api/teams/me", { cache: "no-store" })
+      .then(readResponse<{ team: TeamDashboard | null }>)
+      .then((result) => { if (active) setTeamDashboard(result.team); })
+      .catch((error: unknown) => { if (active) setTeamSessionError(error instanceof Error ? error.message : "Could not load your team."); })
+      .finally(() => { if (active) setTeamSessionLoading(false); });
     return () => { active = false; };
   }, [view]);
 
@@ -235,6 +257,11 @@ export default function ClubPortal({ view }: { view: PortalView }) {
     setRegistrations([]);
   }
 
+  async function logoutTeam() {
+    await fetch("/api/teams/me", { method: "DELETE" });
+    setTeamDashboard(null);
+  }
+
   if (view === "admin" && (!sessionChecked || !adminAuthenticated)) {
     return <AdminLogin checked={sessionChecked} password={adminPassword} setPassword={setAdminPassword} error={adminPasswordError} pending={loginPending} onSubmit={handleLogin} />;
   }
@@ -261,7 +288,9 @@ export default function ClubPortal({ view }: { view: PortalView }) {
 
         {view === "teams" && <>
           <PageIntro label="MAKE IT A TEAM EFFORT" title={<>Your people.<br /><span>Your project.</span></>} copy="Find an active challenge, review its submission rules, and register your team." />
-          {loading ? <LoadingState /> : loadError ? <ErrorState message={loadError} /> : events.length ? <div className="team-live-list">{events.map((event) => <TeamEvent key={event.id} event={event} />)}</div> : <EmptyState title="No active challenges" text="When an admin publishes an event, its team rules and registration link will show here." />}
+          {teamSessionError && <ErrorState message={teamSessionError} />}
+          {!teamSessionLoading && teamDashboard && <TeamDashboardCard team={teamDashboard} onLogout={logoutTeam} />}
+          {loading ? <LoadingState /> : loadError ? <ErrorState message={loadError} /> : events.length ? <div className="team-live-list">{events.map((event) => <TeamEvent key={event.id} event={event} registeredEventId={teamDashboard?.eventId} />)}</div> : <EmptyState title="No active challenges" text="When an admin publishes an event, its team rules and registration link will show here." />}
         </>}
 
         {view === "admin" && <>
@@ -295,8 +324,13 @@ function EventGrid({ events }: { events: ClubEvent[] }) {
   return <div className="event-grid">{events.map((event, index) => <article className={`event-card card-${event.color}`} key={event.id}><Link className="event-image" href={`/events/${event.id}`} style={{ backgroundImage: event.image ? `url("${event.image}")` : "linear-gradient(135deg, #dce8ca, #a9bf8b)", backgroundPosition: event.imagePosition }} aria-label={`View ${event.title}`}><span className="event-date-badge">{event.date}</span><span className="event-image-index">{String(index + 1).padStart(2, "0")}</span></Link><div className="event-card-content"><div className="event-card-meta"><span className="category-label">{event.category}</span><span className="event-spots">{event.spots}</span></div><h3><Link href={`/events/${event.id}`}>{event.title}</Link></h3><p>{event.shortDescription}</p><div className="event-card-bottom"><span><CalendarDays size={14} /> {event.dateLabel}</span><Link href={`/events/${event.id}`} aria-label={`Details for ${event.title}`}><ArrowUpRight size={17} /></Link></div></div></article>)}</div>;
 }
 
-function TeamEvent({ event }: { event: ClubEvent }) {
-  return <article className="team-live-card"><div className="team-live-heading"><div><span className="section-overline">{event.category.toUpperCase()} · {event.dateLabel.toUpperCase()}</span><h2>{event.title}<span>.</span></h2><p>{event.description}</p></div><span className={`team-window ${event.submissionsOpen ? "window-open" : "window-closed"}`}>{event.submissionsOpen ? "SUBMISSIONS OPEN" : "SUBMISSIONS CLOSED"}</span></div><div className="team-live-footer"><span><UsersRound size={15} /> Teams up to {event.maxTeamSize}</span><span><MapPin size={15} /> {event.venue}</span><Link className="button button-lime" href={`/events/${event.id}`}>{event.registrationOpen ? "Register team" : "View event"}<ArrowRight size={16} /></Link></div>{event.submissionRules.length > 0 && <div className="team-live-rules"><strong>SUBMISSION CRITERIA</strong><ul>{event.submissionRules.map((rule, index) => <li key={`${event.id}-${index}`}>{rule}</li>)}</ul></div>}</article>;
+function TeamEvent({ event, registeredEventId }: { event: ClubEvent; registeredEventId?: string }) {
+  const registered = registeredEventId === event.id;
+  return <article className="team-live-card"><div className="team-live-heading"><div><span className="section-overline">{event.category.toUpperCase()} · {event.dateLabel.toUpperCase()}</span><h2>{event.title}<span>.</span></h2><p>{event.description}</p></div><span className={`team-window ${event.submissionsOpen ? "window-open" : "window-closed"}`}>{event.submissionsOpen ? "SUBMISSIONS OPEN" : "SUBMISSIONS CLOSED"}</span></div><div className="team-live-footer"><span><UsersRound size={15} /> Teams up to {event.maxTeamSize}</span><span><MapPin size={15} /> {event.venue}</span><Link className="button button-lime" href={`/events/${event.id}`}>{registered ? "Open team workspace" : event.registrationOpen ? "Register team" : "View event"}<ArrowRight size={16} /></Link></div>{event.submissionRules.length > 0 && <div className="team-live-rules"><strong>SUBMISSION CRITERIA</strong><ul>{event.submissionRules.map((rule, index) => <li key={`${event.id}-${index}`}>{rule}</li>)}</ul></div>}</article>;
+}
+
+function TeamDashboardCard({ team, onLogout }: { team: TeamDashboard; onLogout: () => void }) {
+  return <section className="team-dashboard"><div className="team-dashboard-heading"><div><span className="section-overline">YOUR TEAM DASHBOARD</span><h2>{team.teamName}<span>.</span></h2><p>{team.event?.title ?? "Event"} · Registered {new Date(team.createdAt).toLocaleDateString()}</p></div><button className="icon-button" type="button" title="Forget this team on this device" onClick={onLogout}><LogOut size={15} /></button></div><div className="team-dashboard-members">{team.members.map((member, index) => <article className="team-dashboard-member" key={`${team.id}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{member.name}</strong><small>{member.email}</small><small>{member.phone} · {member.usn}</small></div></article>)}</div><div className="team-dashboard-footer"><span className={`team-window ${team.submission ? "window-open" : "window-closed"}`}>{team.submission ? "SUBMISSION RECEIVED" : "NO SUBMISSION YET"}</span>{team.event && <Link className="button button-lime" href={`/events/${team.event.id}`}>Open team workspace <ArrowRight size={16} /></Link>}</div></section>;
 }
 
 function AdminLogin({ checked, password, setPassword, error, pending, onSubmit }: { checked: boolean; password: string; setPassword: (value: string) => void; error: string; pending: boolean; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
