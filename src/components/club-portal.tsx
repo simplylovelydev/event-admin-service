@@ -54,6 +54,8 @@ export default function ClubPortal({ view }: { view: PortalView }) {
   const [teamDashboard, setTeamDashboard] = useState<TeamDashboard | null>(null);
   const [teamSessionLoading, setTeamSessionLoading] = useState(view === "teams");
   const [teamSessionError, setTeamSessionError] = useState("");
+  const [claimingTeam, setClaimingTeam] = useState(false);
+  const [claimError, setClaimError] = useState("");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All events");
   const [selectedEvent, setSelectedEvent] = useState("all");
@@ -262,6 +264,31 @@ export default function ClubPortal({ view }: { view: PortalView }) {
     setTeamDashboard(null);
   }
 
+  async function recoverTeam(formEvent: FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    setClaimingTeam(true);
+    setClaimError("");
+    const form = new FormData(formEvent.currentTarget);
+    try {
+      await readResponse(await fetch("/api/teams/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          eventId: form.get("eventId"),
+          leaderEmail: form.get("leaderEmail"),
+          leaderUsn: form.get("leaderUsn"),
+        }),
+      }));
+      const result = await readResponse<{ team: TeamDashboard | null }>(await fetch("/api/teams/me", { cache: "no-store" }));
+      if (!result.team) throw new Error("We couldn't restore that team. Check the details and try again.");
+      setTeamDashboard(result.team);
+    } catch (error) {
+      setClaimError(error instanceof Error ? error.message : "Could not find your team.");
+    } finally {
+      setClaimingTeam(false);
+    }
+  }
+
   if (view === "admin" && (!sessionChecked || !adminAuthenticated)) {
     return <AdminLogin checked={sessionChecked} password={adminPassword} setPassword={setAdminPassword} error={adminPasswordError} pending={loginPending} onSubmit={handleLogin} />;
   }
@@ -290,6 +317,7 @@ export default function ClubPortal({ view }: { view: PortalView }) {
           <PageIntro label="MAKE IT A TEAM EFFORT" title={<>Your people.<br /><span>Your project.</span></>} copy="Find an active challenge, review its submission rules, and register your team." />
           {teamSessionError && <ErrorState message={teamSessionError} />}
           {!teamSessionLoading && teamDashboard && <TeamDashboardCard team={teamDashboard} onLogout={logoutTeam} />}
+          {!teamSessionLoading && !teamDashboard && !loading && events.length > 0 && <TeamRecoveryForm events={events} pending={claimingTeam} error={claimError} onSubmit={recoverTeam} />}
           {loading ? <LoadingState /> : loadError ? <ErrorState message={loadError} /> : events.length ? <div className="team-live-list">{events.map((event) => <TeamEvent key={event.id} event={event} registeredEventId={teamDashboard?.eventId} />)}</div> : <EmptyState title="No active challenges" text="When an admin publishes an event, its team rules and registration link will show here." />}
         </>}
 
@@ -331,6 +359,10 @@ function TeamEvent({ event, registeredEventId }: { event: ClubEvent; registeredE
 
 function TeamDashboardCard({ team, onLogout }: { team: TeamDashboard; onLogout: () => void }) {
   return <section className="team-dashboard"><div className="team-dashboard-heading"><div><span className="section-overline">YOUR TEAM DASHBOARD</span><h2>{team.teamName}<span>.</span></h2><p>{team.event?.title ?? "Event"} · Registered {new Date(team.createdAt).toLocaleDateString()}</p></div><button className="icon-button" type="button" title="Forget this team on this device" onClick={onLogout}><LogOut size={15} /></button></div><div className="team-dashboard-members">{team.members.map((member, index) => <article className="team-dashboard-member" key={`${team.id}-${index}`}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{member.name}</strong><small>{member.email}</small><small>{member.phone} · {member.usn}</small></div></article>)}</div><div className="team-dashboard-footer"><span className={`team-window ${team.submission ? "window-open" : "window-closed"}`}>{team.submission ? "SUBMISSION RECEIVED" : "NO SUBMISSION YET"}</span>{team.event && <Link className="button button-lime" href={`/events/${team.event.id}`}>Open team workspace <ArrowRight size={16} /></Link>}</div></section>;
+}
+
+function TeamRecoveryForm({ events, pending, error, onSubmit }: { events: ClubEvent[]; pending: boolean; error: string; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return <form className="team-recovery-form" onSubmit={onSubmit}><div><span className="section-overline">ALREADY REGISTERED?</span><h2>Find your team<span>.</span></h2><p>Use the event, team lead email, and USN from your registration.</p></div><label className="field-label">Event<select name="eventId" required defaultValue=""><option value="" disabled>Select your event</option>{events.map((event) => <option key={event.id} value={event.id}>{event.title}</option>)}</select></label><div className="team-recovery-fields"><label className="field-label">Team lead email<input type="email" name="leaderEmail" autoComplete="email" required /></label><label className="field-label">Team lead USN<input name="leaderUsn" autoComplete="off" required /></label></div>{error && <p className="form-error" role="alert">{error}</p>}<button className="button button-dark" type="submit" disabled={pending}>{pending ? "Finding team…" : "Open my team dashboard"}<ArrowRight size={16} /></button></form>;
 }
 
 function AdminLogin({ checked, password, setPassword, error, pending, onSubmit }: { checked: boolean; password: string; setPassword: (value: string) => void; error: string; pending: boolean; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {

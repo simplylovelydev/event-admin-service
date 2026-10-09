@@ -10,7 +10,11 @@ Next.js event portal with Supabase-backed events, team registrations and submiss
 4. In Google Cloud, enable the Drive and Sheets APIs. Share the target Drive folder with the service-account email as an Editor.
 5. Start the app with `npm run dev`.
 
-The admin portal is at `/admin`. Sign in with the `ADMIN_API_TOKEN` value. Create events there, manage registration/submission windows, search registrations, and create each event's workbook. Public event and team pages only show active events.
+The admin portal is at `/admin`. Sign in with the `ADMIN_API_TOKEN` value. Create events there, manage registration/submission windows, search registrations, and create each event's workbook. Public event and team pages only show active events. Successful registrations keep a signed, HTTP-only team session on that browser. Returning teams without a session can restore it from `/teams` using their event, team-lead email, and USN.
+
+## Optional test data
+
+To test database pages, run [`supabase/seed-registrations.sql`](supabase/seed-registrations.sql); it creates the sample events, teams, and submission with generated IDs. To test Google Sheets syncing, run [`supabase/seed.sql`](supabase/seed.sql), create a sheet for each event in `/admin`, then run `seed-registrations.sql` so the insert webhooks have linked sheets. All sample email addresses and links use reserved example domains.
 
 ## Validation and deployment
 

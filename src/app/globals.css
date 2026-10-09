@@ -1,6 +1,7 @@
 @import "tailwindcss";
 @import "./portal-extensions.css";
 @import "./team-dashboard.css";
+@import "./team-recovery.css";
 
 :root{--paper:#f8f7ef;--ink:#202b25;--muted:#788179;--line:#dedfd4;--green:#20372b;--lime:#d5f25d;--pink:#f6b6c2;--blue:#b7d8f2;--orange:#f6c16e;--display:Georgia,"Times New Roman",serif;--sans:Arial,Helvetica,sans-serif}
 @theme inline{--color-background:var(--paper);--color-foreground:var(--ink);--font-sans:var(--font-geist-sans);--font-mono:var(--font-geist-mono)}
