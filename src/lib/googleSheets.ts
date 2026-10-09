@@ -26,7 +26,16 @@ export const submissionHeaders = [
 
 function getGoogleClients() {
   const email = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  const key = process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  let rawKey = process.env.GOOGLE_PRIVATE_KEY;
+
+  if (rawKey) {
+    // Strip leading/trailing double or single quotes added by .env parsers
+    rawKey = rawKey.replace(/^["']|["']$/g, '');
+    // Replace literal '\n' sequences with real newlines
+    rawKey = rawKey.replace(/\\n/g, '\n');
+  }
+
+  const key = rawKey;
 
   if (!email || !key) {
     throw new Error("Missing Google service account credentials.");
