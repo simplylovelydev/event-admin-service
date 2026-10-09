@@ -13,7 +13,7 @@ function isObject(value: unknown): value is Record<string, unknown> {
 }
 
 function parseDate(value: unknown) {
-  if (value === null || value === "") return null;
+  if (value === undefined || value === null || value === "") return null;
   if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) return undefined;
   return new Date(value).toISOString();
 }
